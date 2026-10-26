@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -20,19 +21,24 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +56,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -77,19 +84,35 @@ private val ICON_SIZE = 200.dp
 private val ICON_CORNER = 40.dp
 
 class MainActivity : ComponentActivity() {
+
+    // Открыт ли экран настроек. Кнопка «Меню» на пульте переключает его.
+    val settingsOpen = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            // Домашний экран: «Назад» ничего не закрывает
-            BackHandler(enabled = true) { }
-            LauncherScreen()
+            LauncherScreen(settingsOpen)
         }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            settingsOpen.value = !settingsOpen.value
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 }
 
 @Composable
-fun LauncherScreen() {
-    val context = androidx.compose.ui.platform.LocalContext.current
+fun LauncherScreen(settingsOpen: MutableState<Boolean>) {
+    val context = LocalContext.current
+    var open by settingsOpen
+
+    // «Назад» закрывает настройки и ничего больше не делает
+    BackHandler(enabled = true) {
+        if (open) open = false
+    }
 
     // Смена обоев каждые 30 секунд
     var wallIndex by remember { mutableIntStateOf(0) }
@@ -100,9 +123,26 @@ fun LauncherScreen() {
         }
     }
 
-    // Список приложений собираем в фоне
-    val apps by produceState(initialValue = emptyList<AppData>(), context) {
+    // Все приложения собираем в фоне
+    val allApps by produceState(initialValue = emptyList<AppData>(), context) {
         value = withContext(Dispatchers.IO) { AppRepository.loadUserApps(context) }
+    }
+
+    // Сохранённый порядок и скрытые приложения
+    var order by remember { mutableStateOf<List<String>>(emptyList()) }
+    var hidden by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(Unit) {
+        order = AppPrefs.order(context)
+        hidden = AppPrefs.hidden(context)
+    }
+
+    val arranged = remember(allApps, order) { AppPrefs.arrange(allApps, order) }
+    val visible = arranged.filter { it.packageName !in hidden }
+
+    fun save(newOrder: List<String>, newHidden: Set<String>) {
+        order = newOrder
+        hidden = newHidden
+        AppPrefs.save(context, newOrder, newHidden)
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -133,9 +173,31 @@ fun LauncherScreen() {
                 )
         )
 
-        Column(modifier = Modifier.fillMaxSize()) {
-            HeroSection(modifier = Modifier.weight(0.6f))
-            DockSection(apps = apps, modifier = Modifier.weight(0.4f))
+        if (!open) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                HeroSection(
+                    modifier = Modifier.weight(0.6f),
+                    onOpenSettings = { open = true }
+                )
+                DockSection(apps = visible, modifier = Modifier.weight(0.4f))
+            }
+        } else {
+            SettingsScreen(
+                apps = arranged,
+                hidden = hidden,
+                onMove = { from, to ->
+                    val list = arranged.map { it.packageName }.toMutableList()
+                    val item = list.removeAt(from)
+                    list.add(to, item)
+                    save(list, hidden)
+                },
+                onToggle = { pkg ->
+                    val h = hidden.toMutableSet()
+                    if (!h.add(pkg)) h.remove(pkg)
+                    save(arranged.map { it.packageName }, h)
+                },
+                onClose = { open = false }
+            )
         }
     }
 }
@@ -143,8 +205,8 @@ fun LauncherScreen() {
 // ---------------------------------------------------------------- верхняя часть (60%)
 
 @Composable
-private fun HeroSection(modifier: Modifier = Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+private fun HeroSection(modifier: Modifier = Modifier, onOpenSettings: () -> Unit) {
+    val context = LocalContext.current
 
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) {
@@ -158,7 +220,7 @@ private fun HeroSection(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) { appear = true }
 
     Box(modifier = modifier.fillMaxWidth().padding(horizontal = 96.dp, vertical = 72.dp)) {
-        // Левый верхний угол: часы, дата, приветствие
+        // Левый верхний угол: приветствие, часы, дата
         AnimatedVisibility(
             visible = appear,
             modifier = Modifier.align(Alignment.TopStart),
@@ -187,15 +249,20 @@ private fun HeroSection(modifier: Modifier = Modifier) {
             }
         }
 
-        // Правый верхний угол: погода и сеть
+        // Правый верхний угол: настройки, погода, сеть
         Row(
             modifier = Modifier.align(Alignment.TopEnd),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(32.dp)
         ) {
+            SettingsButton(text = "⚙  Настроить", onClick = onOpenSettings)
             // Погода: нужен сервис погоды и ключ, поэтому пока заглушка
             Text(text = "☀ --°", fontSize = 28.sp, color = Color.White)
-            Text(text = "● " + networkLabel(context), fontSize = 24.sp, color = Color.White.copy(alpha = 0.8f))
+            Text(
+                text = "● " + networkLabel(context),
+                fontSize = 24.sp,
+                color = Color.White.copy(alpha = 0.8f)
+            )
         }
     }
 }
@@ -221,7 +288,7 @@ private fun networkLabel(context: Context): String {
 
 @Composable
 private fun DockSection(apps: List<AppData>, modifier: Modifier = Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     var focusedIndex by remember { mutableIntStateOf(-1) }
     val firstFocus = remember { FocusRequester() }
 
@@ -232,7 +299,11 @@ private fun DockSection(apps: List<AppData>, modifier: Modifier = Modifier) {
 
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         if (apps.isEmpty()) {
-            Text(text = "Нет установленных приложений", fontSize = 24.sp, color = Color.White.copy(alpha = 0.7f))
+            Text(
+                text = "Нет приложений. Нажмите «Меню» на пульте, чтобы открыть настройки.",
+                fontSize = 24.sp,
+                color = Color.White.copy(alpha = 0.7f)
+            )
         } else {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 96.dp),
@@ -332,5 +403,109 @@ private fun AppTile(
                 modifier = Modifier.padding(top = 20.dp)
             )
         }
+    }
+}
+
+// ---------------------------------------------------------------- настройки
+
+@Composable
+private fun SettingsScreen(
+    apps: List<AppData>,
+    hidden: Set<String>,
+    onMove: (from: Int, to: Int) -> Unit,
+    onToggle: (packageName: String) -> Unit,
+    onClose: () -> Unit
+) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xF2000000))
+            .padding(horizontal = 120.dp, vertical = 80.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Настройки лаунчера",
+                    fontSize = 44.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f)
+                )
+                SettingsButton(text = "Закрыть", onClick = onClose)
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                itemsIndexed(apps, key = { _, app -> app.packageName }) { index, app ->
+                    val isHidden = app.packageName in hidden
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = app.label,
+                            fontSize = 28.sp,
+                            color = if (isHidden) Color.White.copy(alpha = 0.4f) else Color.White,
+                            modifier = Modifier.weight(1f)
+                        )
+                        SettingsButton(
+                            text = if (isHidden) "Показать" else "Скрыть",
+                            onClick = { onToggle(app.packageName) },
+                            focusRequester = if (index == 0) firstFocus else null
+                        )
+                        SettingsButton(
+                            text = "▲",
+                            enabled = index > 0,
+                            onClick = { onMove(index, index - 1) }
+                        )
+                        SettingsButton(
+                            text = "▼",
+                            enabled = index < apps.size - 1,
+                            onClick = { onMove(index, index + 1) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Кнопка с белой подсветкой при фокусе. */
+@Composable
+private fun SettingsButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    focusRequester: FocusRequester? = null
+) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .height(64.dp)
+            .widthIn(min = 64.dp)
+            .clip(RoundedCornerShape(32.dp))
+            .background(if (focused) Color.White else Color(0x33FFFFFF))
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            fontSize = 24.sp,
+            color = when {
+                focused -> Color.Black
+                enabled -> Color.White
+                else -> Color.White.copy(alpha = 0.3f)
+            }
+        )
     }
 }
