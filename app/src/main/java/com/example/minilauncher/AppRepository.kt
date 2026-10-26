@@ -32,7 +32,11 @@ object AppRepository {
             }
             .distinctBy { it.packageName }
             .mapNotNull { info ->
+                // Флаги как в рабочей версии: приложение открывается в своей задаче
                 val launch = pm.getLeanbackLaunchIntentForPackage(info.packageName)
+                    ?.addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                    )
                     ?: return@mapNotNull null
                 AppData(
                     label = info.loadLabel(pm).toString(),
