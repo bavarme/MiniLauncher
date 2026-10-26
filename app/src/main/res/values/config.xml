@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Настройки лаунчера. Пакеты приложений можно поменять здесь.
+  Приложения, которых нет на ТВ, просто пропускаются.
+  Если в доке ничего не нашлось, туда попадут первые 5 приложений из списка.
+-->
+<resources>
+    <!-- Док (нижний ряд с подсветкой), слева направо -->
+    <string-array name="dock_apps">
+        <item>com.apple.atve.androidtv.appletv</item>
+        <item>com.google.android.youtube.tv</item>
+        <item>com.netflix.ninja</item>
+        <item>in.startv.hotstar</item>
+        <item>com.amazon.amazonvideo.livingroom</item>
+    </string-array>
+
+    <!-- Приложения, которые не показываем на главном экране -->
+    <string-array name="hidden_apps">
+        <!-- пусто: все приложения видны -->
+
+    </string-array>
+
+    <!-- Плиток в строке сетки «Все приложения» -->
+    <integer name="columns">5</integer>
+</resources>
