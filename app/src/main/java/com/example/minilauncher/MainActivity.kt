@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.util.Log
 import android.view.KeyEvent
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -318,7 +320,17 @@ private fun DockSection(apps: List<AppData>, modifier: Modifier = Modifier) {
                         focusRequester = if (index == 0) firstFocus else null,
                         onFocused = { focusedIndex = it },
                         onClick = {
-                            runCatching { context.startActivity(app.launchIntent) }
+                            try {
+                                context.startActivity(app.launchIntent)
+                            } catch (e: Exception) {
+                                // Показываем причину, чтобы было понятно, что пошло не так
+                                Log.e("MiniLauncher", "Не удалось открыть ${app.packageName}", e)
+                                Toast.makeText(
+                                    context,
+                                    "Не открылось: ${e.javaClass.simpleName} ${e.message.orEmpty()}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     )
                 }
