@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
@@ -9,8 +10,8 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|start"
-        android:layout_marginStart="80dp"
-        android:layout_marginTop="60dp"
+        android:layout_marginStart="96dp"
+        android:layout_marginTop="64dp"
         android:orientation="vertical">
 
         <TextView
@@ -19,27 +20,30 @@
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
             android:textColor="#FFFFFF"
-            android:textSize="96sp"
+            android:textSize="80sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/dateView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="#99FFFFFF"
-            android:textSize="28sp" />
+            android:layout_marginTop="6dp"
+            android:textColor="#B3FFFFFF"
+            android:textSize="24sp" />
     </LinearLayout>
 
-    <!-- Док: внизу по центру -->
-    <LinearLayout
-        android:id="@+id/dock"
-        android:layout_width="wrap_content"
+    <!-- Ряд приложений: внизу, по горизонтали -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/appsList"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="56dp"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="48dp"
         android:clipChildren="false"
         android:clipToPadding="false"
-        android:orientation="horizontal" />
+        android:paddingStart="96dp"
+        android:paddingEnd="96dp"
+        android:paddingTop="40dp"
+        android:paddingBottom="40dp" />
 
 </FrameLayout>
