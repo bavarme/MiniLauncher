@@ -21,6 +21,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -77,6 +78,8 @@ public class MainActivity extends Activity {
     private String[] dockPkgs = new String[0];
     private String[] wallpapers = new String[0];
     private int columns = 5;
+    // Масштаб интерфейса: 1.0 у экрана 960×540dp (1080p), больше на 4K, меньше на маленьких экранах
+    private float ui = 1f;
 
     private FrameLayout root;
     private ImageView wallA, wallB;
@@ -123,7 +126,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
-        columns = getResources().getInteger(R.integer.columns);
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        float wDp = m.widthPixels / m.density;
+        float hDp = m.heightPixels / m.density;
+        ui = Math.max(0.8f, Math.min(2.5f, Math.min(wDp / 960f, hDp / 540f)));
+        // Плиток в ряд столько, сколько помещается при размере плитки около 190dp
+        columns = Math.max(3, Math.round(wDp / (190f * ui)));
         dockPkgs = getResources().getStringArray(R.array.dock_apps);
         for (String p : getResources().getStringArray(R.array.hidden_apps)) hidden.add(p);
         hidden.add(getPackageName());
@@ -290,7 +298,7 @@ public class MainActivity extends Activity {
 
     private TextView text(float sp, int color, String family) {
         TextView t = new TextView(this);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp * ui);
         t.setTextColor(color);
         t.setTypeface(Typeface.create(family, Typeface.NORMAL));
         t.setShadowLayer(dp(10), 0, dp(1), 0xB3000000);
@@ -590,8 +598,9 @@ public class MainActivity extends Activity {
         return new FrameLayout.LayoutParams(-1, -1);
     }
 
+    /** Размер в dp, умноженный на масштаб экрана: на любом ТВ все отступы пропорциональны. */
     private int dp(int value) {
-        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
-                getResources().getDisplayMetrics());
+        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value * ui,
+                getResources().getDisplayMetrics()));
     }
 }
