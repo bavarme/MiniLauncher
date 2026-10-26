@@ -1,0 +1,11 @@
+build_apk:
+  image: mobiledevops/android-sdk-image:34.0.0
+  script:
+    - curl -sSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.7-bin.zip
+    - unzip -q /tmp/gradle.zip -d /opt
+    - /opt/gradle-8.7/bin/gradle assembleDebug --no-daemon
+  artifacts:
+    name: MiniLauncher-debug-apk
+    paths:
+      - app/build/outputs/apk/debug/app-debug.apk
+    expire_in: 1 week
