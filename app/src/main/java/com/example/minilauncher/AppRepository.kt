@@ -20,7 +20,7 @@ object AppRepository {
      */
     private const val SHOW_SYSTEM_APPS = false
 
-    private const val FALLBACK_ACCENT = 0xFF3A3A3C.toInt()
+    private val FALLBACK_ACCENT: Int = 0xFF3A3A3C.toInt()
 
     fun loadUserApps(context: Context): List<AppData> {
         val pm = context.packageManager
