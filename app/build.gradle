@@ -36,6 +36,8 @@ android {
 
     kotlinOptions {
         jvmTarget = '17'
+        // BringIntoView (прокрутка к фокусу) в Compose помечен как экспериментальный API
+        freeCompilerArgs += ['-opt-in=androidx.compose.foundation.ExperimentalFoundationApi']
     }
 }
 
