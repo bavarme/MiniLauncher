@@ -10,14 +10,13 @@ import android.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 
-/** Сканирует установленные приложения для ТВ. */
+/**
+ * Сканирует установленные приложения для ТВ.
+ * Картинки уменьшаются сразу при загрузке, чтобы не занимать лишнюю память.
+ */
 object AppRepository {
 
-    /**
-     * false: показываем только пользовательские приложения.
-     * Предустановленные приложения ТВ (YouTube, Netflix и т. п.) тогда скрыты.
-     * Поставьте true, чтобы показывать и их.
-     */
+    /** false: только пользовательские приложения. true: показывать и предустановленные. */
     private const val SHOW_SYSTEM_APPS = false
 
     private val FALLBACK_ACCENT: Int = 0xFF3A3A3C.toInt()
@@ -48,9 +47,10 @@ object AppRepository {
         val launch = pm.getLeanbackLaunchIntentForPackage(info.packageName) ?: return null
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
 
-        // Баннер для ТВ выглядит лучше иконки. Иконка — запасной вариант.
+        // Баннер для ТВ выглядит лучше иконки; RGB_565 вдвое экономит память
         val banner = runCatching {
-            (info.loadBanner(pm) ?: info.applicationInfo.loadBanner(pm))?.toBitmap(640, 360)
+            (info.loadBanner(pm) ?: info.applicationInfo.loadBanner(pm))
+                ?.toBitmap(480, 270, Bitmap.Config.RGB_565)
         }.getOrNull()
         val icon = if (banner == null) {
             runCatching { info.loadIcon(pm).toBitmap(256, 256) }.getOrNull()
@@ -69,7 +69,7 @@ object AppRepository {
         )
     }
 
-    /** Средний цвет картинки: считаем по сетке 8×8 пикселей, прозрачные пропускаем. */
+    /** Средний цвет картинки по сетке 8×8, прозрачные пиксели пропускаем. */
     private fun averageColor(src: Bitmap): Int {
         val small = Bitmap.createScaledBitmap(src, 8, 8, true)
         var r = 0
@@ -89,4 +89,16 @@ object AppRepository {
         small.recycle()
         return if (n == 0) FALLBACK_ACCENT else Color.rgb(r / n, g / n, b / n)
     }
+}
+
+/**
+ * Порядок приложений: сохранённый, а если его ещё нет, стартовый набор из config.xml.
+ * Новые приложения добавляются в конец, по алфавиту. Удалённые просто пропускаются.
+ */
+fun arrangeApps(all: List<AppData>, saved: List<String>, seeds: List<String>): List<AppData> {
+    val byPkg = all.associateBy { it.packageName }
+    val base = if (saved.isEmpty()) seeds else saved
+    val ordered = base.mapNotNull { byPkg[it] }
+    val known = base.toSet()
+    return ordered + all.filter { it.packageName !in known }
 }

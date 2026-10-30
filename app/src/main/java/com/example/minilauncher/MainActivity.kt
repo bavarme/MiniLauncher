@@ -1,132 +1,156 @@
 package com.example.minilauncher
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
+import androidx.core.content.ContextCompat
 
+/**
+ * Единственная Activity лаунчера. Отвечает за кнопки пульта, заставку по простою
+ * и обновление списка при установке, удалении или обновлении приложений.
+ */
 class MainActivity : ComponentActivity() {
 
-    // Открыты ли настройки. Кнопка «Меню» на пульте переключает их.
-    private val settingsOpen = mutableStateOf(false)
+    private lateinit var prefs: AppPrefs
+    private lateinit var state: LauncherState
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val idleRunnable = Runnable { startScreensaverIfIdle() }
+
+    // Клавиша, отпускание которой надо проглотить: после пробуждения заставки
+    // иначе отпускание нажмёт плитку под фокусом
+    private var swallowKeyUp: Int? = null
+
+    private val packageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            state.appsVersion++
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        prefs = AppPrefs(this)
+        state = LauncherState(prefs, prefs.load(), prefs.lastFocus)
+
+        // Главный экран не закрывается «Назад». Этот обработчик стоит первым в очереди,
+        // поэтому BackHandler открытых оверлеев срабатывает раньше.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // намеренно пусто
+            }
+        })
+
+        val seeds = resources.getStringArray(R.array.dock_apps).toList()
         setContent {
             DesignScale {
-                LauncherScreen(settingsOpen)
+                LauncherScreen(state = state, seeds = seeds, versionLabel = versionName())
             }
         }
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_MENU) {
-            settingsOpen.value = !settingsOpen.value
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }
+        ContextCompat.registerReceiver(this, packageReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(packageReceiver) }
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Возврат из другого приложения: фокус на последнюю плитку
+        state.restoreTick++
+        userActive()
+    }
+
+    override fun onPause() {
+        prefs.lastFocus = state.focusedPkg
+        handler.removeCallbacks(idleRunnable)
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        super.onDestroy()
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        // Нажали «Домой» на открытом лаунчере: закрываем оверлеи и будим заставку
+        if (state.overlay != Overlay.NONE) state.close()
+        state.screensaverOn = false
+        userActive()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP && event.keyCode == swallowKeyUp) {
+            swallowKeyUp = null
             return true
         }
-        return super.onKeyDown(keyCode, event)
-    }
-}
-
-@Composable
-fun LauncherScreen(settingsOpen: MutableState<Boolean>) {
-    val context = LocalContext.current
-    var open by settingsOpen
-
-    // «Назад» закрывает настройки и больше ничего не делает
-    BackHandler(enabled = true) { open = false }
-
-    var wallIndex by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(WALLPAPER_INTERVAL_MS)
-            wallIndex = (wallIndex + 1) % WALLPAPERS.size
-        }
-    }
-
-    // Цвет подсветки: плавно меняется при фокусе на другой плитке
-    var accentTarget by remember { mutableStateOf(Color(0xFF1C1C1E)) }
-    val accent by animateColorAsState(
-        targetValue = accentTarget,
-        animationSpec = tween(durationMillis = 700),
-        label = "accent"
-    )
-
-    val allApps by produceState(initialValue = emptyList<AppData>(), context) {
-        value = withContext(Dispatchers.IO) { AppRepository.loadUserApps(context) }
-    }
-
-    // Порядок и скрытые приложения, сохранённые между запусками
-    var order by remember { mutableStateOf<List<String>>(emptyList()) }
-    var hidden by remember { mutableStateOf<Set<String>>(emptySet()) }
-    LaunchedEffect(Unit) {
-        order = AppPrefs.order(context)
-        hidden = AppPrefs.hidden(context)
-    }
-
-    val arranged = remember(allApps, order) { AppPrefs.arrange(allApps, order) }
-    val visible = remember(arranged, hidden) { arranged.filter { it.packageName !in hidden } }
-
-    fun save(newOrder: List<String>, newHidden: Set<String>) {
-        order = newOrder
-        hidden = newHidden
-        AppPrefs.save(context, newOrder, newHidden)
-    }
-
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        HomeBackground(wallIndex = wallIndex, accent = accent)
-
-        if (!open) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                HomeTop(
-                    onOpenSettings = { open = true },
-                    modifier = Modifier.weight(0.6f)
-                )
-                AppDock(
-                    apps = visible,
-                    onAccentChange = { accentTarget = it },
-                    modifier = Modifier.weight(0.4f)
-                )
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            userActive()
+            if (state.screensaverOn) {
+                // Любая кнопка только будит заставку и ничего не нажимает на экране
+                state.screensaverOn = false
+                swallowKeyUp = event.keyCode
+                return true
             }
+            if (event.keyCode == KeyEvent.KEYCODE_MENU && event.repeatCount == 0) {
+                toggleMenu()
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * Кнопка «Меню»: открывает меню приложения в фокусе (или настройки, если приложение
+     * ещё не выбрано). Если что-то уже открыто, закрывает.
+     */
+    private fun toggleMenu() {
+        if (state.overlay != Overlay.NONE) {
+            state.close()
+            return
+        }
+        val pkg = state.focusedPkg
+        if (pkg != null) {
+            state.menuPkg = pkg
+            state.open(Overlay.MENU)
         } else {
-            SettingsScreen(
-                apps = arranged,
-                hidden = hidden,
-                onMove = { from, to ->
-                    val list = arranged.map { it.packageName }.toMutableList()
-                    val item = list.removeAt(from)
-                    list.add(to, item)
-                    save(list, hidden)
-                },
-                onToggle = { pkg ->
-                    val h = hidden.toMutableSet()
-                    if (!h.add(pkg)) h.remove(pkg)
-                    save(arranged.map { it.packageName }, h)
-                },
-                onClose = { open = false }
-            )
+            state.open(Overlay.SETTINGS)
         }
     }
+
+    /** Любое нажатие сбрасывает отсчёт простоя. Время берётся из настроек в этот момент. */
+    private fun userActive() {
+        handler.removeCallbacks(idleRunnable)
+        val s = state.settings
+        if (s.ssEnabled) handler.postDelayed(idleRunnable, s.ssMinutes * 60_000L)
+    }
+
+    private fun startScreensaverIfIdle() {
+        if (state.settings.ssEnabled && state.overlay == Overlay.NONE) {
+            state.screensaverOn = true
+        }
+    }
+
+    private fun versionName(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+    }.getOrDefault("")
 }

@@ -37,19 +37,24 @@ import java.util.Locale
 private const val USER_NAME = "Владислав"
 
 /**
- * Верхняя часть экрана: приветствие, большие часы и дата слева,
- * кнопки настроек, погоды и сети справа.
+ * Верхняя часть главного экрана: приветствие, часы и дату слева,
+ * справа кнопки поиска и настроек и индикатор сети (только если сеть известна).
  */
 @Composable
-fun HomeTop(onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
+fun HomeTop(
+    onSearch: () -> Unit,
+    onSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
     val is24 = remember { android.text.format.DateFormat.is24HourFormat(context) }
 
+    // Часы показывают минуты, поэтому обновляем только на границе минуты
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) {
         while (true) {
             now = Date()
-            delay(1000L)
+            delay(60_000L - System.currentTimeMillis() % 60_000L + 50L)
         }
     }
 
@@ -57,7 +62,7 @@ fun HomeTop(onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) {
         while (true) {
             network = networkLabel(context)
-            delay(10_000L)
+            delay(15_000L)
         }
     }
 
@@ -71,7 +76,15 @@ fun HomeTop(onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
         .replaceFirstChar { it.uppercase() }
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
-    Box(modifier = modifier.fillMaxWidth().padding(start = 96.dp, end = 96.dp, top = 72.dp)) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                start = Tokens.SafeHorizontal,
+                end = Tokens.SafeHorizontal,
+                top = Tokens.SafeTop
+            )
+    ) {
         AnimatedVisibility(
             visible = appear,
             modifier = Modifier.align(Alignment.TopStart),
@@ -84,19 +97,19 @@ fun HomeTop(onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
                     fontSize = 24.sp,
                     letterSpacing = 2.sp,
                     fontWeight = FontWeight.Medium,
-                    color = Color.White.copy(alpha = 0.75f)
+                    color = Tokens.TextSecondary
                 )
                 Text(
                     text = time,
                     fontSize = 132.sp,
                     fontWeight = FontWeight.Thin,
                     letterSpacing = (-2).sp,
-                    color = Color.White
+                    color = Tokens.TextPrimary
                 )
                 Text(
                     text = dateText,
                     fontSize = 30.sp,
-                    color = Color.White.copy(alpha = 0.8f)
+                    color = Tokens.TextSecondary
                 )
             }
         }
@@ -106,10 +119,13 @@ fun HomeTop(onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            GlassButton(text = "⚙  Настроить", onClick = onOpenSettings)
-            // Погода: нужен сервис погоды и ключ, поэтому пока заглушка
-            GlassButton(text = "☀  --°")
-            GlassButton(text = "●  $network")
+            Text(
+                text = "●  $network",
+                fontSize = 24.sp,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+            GlassButton(text = "Поиск", onClick = onSearch)
+            GlassButton(text = "Настройки", onClick = onSettings)
         }
     }
 }

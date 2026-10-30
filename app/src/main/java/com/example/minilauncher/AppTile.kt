@@ -5,8 +5,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -45,19 +43,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
-private val TILE = 240.dp
-private val TILE_RADIUS = 56.dp
+private val TILE = Tokens.TileSize
 
 /**
- * Плитка приложения в стиле tvOS: скруглённый квадрат с цветом приложения.
- * В фокусе плитка увеличивается с пружинкой, получает тень в цвет приложения,
- * белую рамку и название под собой. Соседние плитки отъезжают в стороны.
+ * Плитка приложения в стиле tvOS. В фокусе плитка увеличивается с пружинкой,
+ * получает тень в цвет приложения и белую рамку. Соседние плитки отъезжают в стороны.
+ * При reduced motion увеличение и смещение отключены, рамка остаётся.
  */
 @Composable
 fun AppTile(
     app: AppData,
     index: Int,
     focusedIndex: Int,
+    isFavorite: Boolean,
+    reducedMotion: Boolean,
     focusRequester: FocusRequester?,
     onFocused: () -> Unit,
     onClick: () -> Unit
@@ -66,10 +65,10 @@ fun AppTile(
     val scope = rememberCoroutineScope()
     val bringIntoView = remember { BringIntoViewRequester() }
     val accent = Color(app.accent)
-    val shape = RoundedCornerShape(TILE_RADIUS)
+    val shape = RoundedCornerShape(Tokens.TileRadius)
 
     val scale by animateFloatAsState(
-        targetValue = if (focused) 1.14f else 1f,
+        targetValue = if (focused && !reducedMotion) 1.14f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMediumLow
@@ -78,7 +77,7 @@ fun AppTile(
     )
     val magnet by animateDpAsState(
         targetValue = when {
-            focusedIndex < 0 || index == focusedIndex -> 0.dp
+            reducedMotion || focusedIndex < 0 || index == focusedIndex -> 0.dp
             index == focusedIndex - 1 -> (-28).dp
             index == focusedIndex + 1 -> 28.dp
             else -> 0.dp
@@ -91,7 +90,7 @@ fun AppTile(
     )
     val labelAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
-        animationSpec = tween(durationMillis = 200),
+        animationSpec = tween(durationMillis = Tokens.MS_FOCUS),
         label = "labelAlpha"
     )
 
@@ -135,7 +134,7 @@ fun AppTile(
         ) {
             val art = app.art
             if (art != null) {
-                Image(
+                androidx.compose.foundation.Image(
                     bitmap = art,
                     contentDescription = app.label,
                     contentScale = if (app.isBanner) ContentScale.Crop else ContentScale.Fit,
@@ -144,9 +143,9 @@ fun AppTile(
                         .padding(if (app.isBanner) 0.dp else 40.dp)
                 )
             } else {
-                // Иконки нет: показываем звёздочку
                 Text(text = "★", fontSize = 96.sp, color = Color.White)
             }
+
             // Блик сверху, как у стеклянной поверхности
             Box(
                 modifier = Modifier
@@ -158,6 +157,18 @@ fun AppTile(
                         )
                     )
             )
+
+            // Метка избранного
+            if (isFavorite) {
+                Text(
+                    text = "★",
+                    fontSize = 28.sp,
+                    color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(14.dp)
+                )
+            }
         }
 
         // Название под плиткой: видно только в фокусе

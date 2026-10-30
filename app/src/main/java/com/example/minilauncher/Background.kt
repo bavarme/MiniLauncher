@@ -1,18 +1,16 @@
 package com.example.minilauncher
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -20,9 +18,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 
-/** Как часто меняются обои. */
-const val WALLPAPER_INTERVAL_MS = 30_000L
-
+/** Обои из res/drawable (wall_01 … wall_12). Лежат в приложении, интернет не нужен. */
 internal val WALLPAPERS = listOf(
     R.drawable.wall_01, R.drawable.wall_02, R.drawable.wall_03, R.drawable.wall_04,
     R.drawable.wall_05, R.drawable.wall_06, R.drawable.wall_07, R.drawable.wall_08,
@@ -30,39 +26,17 @@ internal val WALLPAPERS = listOf(
 )
 
 /**
- * Фон: обои с плавной сменой (crossfade) и медленным «дыханием» масштаба (Ken Burns).
- * Сверху и снизу затемнение, снизу дополнительно подсвечивается цветом выбранного приложения.
+ * Фон главного экрана: обои с плавной сменой (crossfade), затемнение сверху и снизу,
+ * и подсветка снизу цветом выбранного приложения.
  */
 @Composable
-fun HomeBackground(wallIndex: Int, accent: Color) {
-    val transition = rememberInfiniteTransition(label = "kenBurns")
-    // Масштаб читается только при отрисовке, поэтому экран не перерисовывается целиком
-    val zoom by transition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.07f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 40_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "zoom"
-    )
-
+fun HomeBackground(wallIndex: Int, accent: Color, reducedMotion: Boolean) {
     Crossfade(
         targetState = wallIndex,
-        animationSpec = tween(durationMillis = 2000),
+        animationSpec = tween(durationMillis = if (reducedMotion) 0 else Tokens.MS_CROSSFADE),
         label = "wallpaper"
     ) { index ->
-        Image(
-            painter = painterResource(WALLPAPERS[index]),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = zoom
-                    scaleY = zoom
-                }
-        )
+        Wallpaper(res = WALLPAPERS[index], slow = !reducedMotion)
     }
 
     Box(
@@ -87,5 +61,28 @@ fun HomeBackground(wallIndex: Int, accent: Color) {
                     1f to accent.copy(alpha = 0.4f)
                 )
             )
+    )
+}
+
+/**
+ * Одна картинка с медленным приближением. Анимация одноразовая (не бесконечная),
+ * поэтому на слабом ТВ она почти ничего не стоит. При reduced motion отключена.
+ */
+@Composable
+internal fun Wallpaper(res: Int, slow: Boolean) {
+    val zoom = remember { Animatable(1f) }
+    LaunchedEffect(slow) {
+        if (slow) zoom.animateTo(1.05f, tween(durationMillis = 32_000, easing = LinearEasing))
+    }
+    Image(
+        painter = painterResource(res),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                scaleX = zoom.value
+                scaleY = zoom.value
+            }
     )
 }
