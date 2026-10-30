@@ -21,7 +21,8 @@ class LauncherState(
         private set
 
     var menuPkg by mutableStateOf<String?>(null)
-    var focusedPkg by mutableStateOf(initialFocus)
+    /** Не состояние Compose: смена фокуса не должна перерисовывать весь экран. */
+    var focusedPkg: String? = initialFocus
     var screensaverOn by mutableStateOf(false)
 
     /** Меняется при возврате на главный экран: по нему фокус возвращается на последнюю плитку. */

@@ -36,7 +36,7 @@ fun HomeBackground(wallIndex: Int, accent: Color, reducedMotion: Boolean) {
         animationSpec = tween(durationMillis = if (reducedMotion) 0 else Tokens.MS_CROSSFADE),
         label = "wallpaper"
     ) { index ->
-        Wallpaper(res = WALLPAPERS[index], slow = !reducedMotion)
+        Wallpaper(res = WALLPAPERS[index], slow = false)
     }
 
     Box(

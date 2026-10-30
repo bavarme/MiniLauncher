@@ -47,17 +47,20 @@ object AppRepository {
         val launch = pm.getLeanbackLaunchIntentForPackage(info.packageName) ?: return null
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
 
-        // Баннер для ТВ выглядит лучше иконки; RGB_565 вдвое экономит память
+        // Баннер 16:9 лучше иконки. ARGB_8888, потому что RGB_565 даёт полосы на градиентах
         val banner = runCatching {
             (info.loadBanner(pm) ?: info.applicationInfo.loadBanner(pm))
-                ?.toBitmap(480, 270, Bitmap.Config.RGB_565)
+                ?.toBitmap(640, 360, Bitmap.Config.ARGB_8888)
         }.getOrNull()
         val icon = if (banner == null) {
-            runCatching { info.loadIcon(pm).toBitmap(256, 256) }.getOrNull()
+            runCatching { info.loadIcon(pm).toBitmap(512, 512, Bitmap.Config.ARGB_8888) }.getOrNull()
         } else {
             null
         }
         val source = banner ?: icon
+
+        // Размытый фон для баннера: картинка 16×9 растянута обратно, поэтому размытие почти бесплатное
+        val backdrop = banner?.let { Bitmap.createScaledBitmap(it, 16, 9, true).asImageBitmap() }
 
         return AppData(
             label = runCatching { info.loadLabel(pm).toString() }.getOrDefault(info.packageName),
@@ -65,7 +68,8 @@ object AppRepository {
             art = source?.asImageBitmap(),
             isBanner = banner != null,
             accent = source?.let { averageColor(it) } ?: FALLBACK_ACCENT,
-            launchIntent = launch
+            launchIntent = launch,
+            backdrop = backdrop
         )
     }
 

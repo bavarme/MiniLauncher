@@ -33,9 +33,6 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-// Имя в приветствии. Поменяйте на своё.
-private const val USER_NAME = "Владислав"
-
 /**
  * Верхняя часть главного экрана: приветствие, часы и дату слева,
  * справа кнопки поиска и настроек и индикатор сети (только если сеть известна).
@@ -93,7 +90,7 @@ fun HomeTop(
         ) {
             Column {
                 Text(
-                    text = (greeting(hour) + ", " + USER_NAME).uppercase(),
+                    text = greeting(hour).uppercase(),
                     fontSize = 24.sp,
                     letterSpacing = 2.sp,
                     fontWeight = FontWeight.Medium,

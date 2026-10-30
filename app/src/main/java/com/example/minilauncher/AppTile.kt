@@ -1,10 +1,10 @@
 package com.example.minilauncher
 
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,14 +28,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,15 +45,14 @@ import kotlinx.coroutines.launch
 private val TILE = Tokens.TileSize
 
 /**
- * Плитка приложения в стиле tvOS. В фокусе плитка увеличивается с пружинкой,
- * получает тень в цвет приложения и белую рамку. Соседние плитки отъезжают в стороны.
- * При reduced motion увеличение и смещение отключены, рамка остаётся.
+ * Плитка приложения. В фокусе плитка чуть увеличивается, получает белую рамку и мягкое
+ * свечение цветом приложения. Всё это делается при отрисовке, без пересчёта композиции,
+ * поэтому листание не тормозит. Баннер 16:9 показывается целиком на размытом фоне,
+ * иконка заполняет плитку.
  */
 @Composable
 fun AppTile(
     app: AppData,
-    index: Int,
-    focusedIndex: Int,
     isFavorite: Boolean,
     reducedMotion: Boolean,
     focusRequester: FocusRequester?,
@@ -69,63 +66,58 @@ fun AppTile(
     val shape = RoundedCornerShape(Tokens.TileRadius)
 
     val scale by animateFloatAsState(
-        targetValue = if (focused && !reducedMotion) 1.14f else 1f,
+        targetValue = if (focused && !reducedMotion) 1.12f else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            dampingRatio = Spring.DampingRatioLowBouncy,
             stiffness = Spring.StiffnessMediumLow
         ),
         label = "tileScale"
     )
-    val magnet by animateDpAsState(
-        targetValue = when {
-            reducedMotion || focusedIndex < 0 || index == focusedIndex -> 0.dp
-            index == focusedIndex - 1 -> (-28).dp
-            index == focusedIndex + 1 -> 28.dp
-            else -> 0.dp
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "magnet"
-    )
-    val labelAlpha by animateFloatAsState(
+    val focusAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
         animationSpec = tween(durationMillis = Tokens.MS_FOCUS),
-        label = "labelAlpha"
+        label = "focusAlpha"
     )
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .offset(x = magnet)
-            .bringIntoViewRequester(bringIntoView)
+        modifier = Modifier.bringIntoViewRequester(bringIntoView)
     ) {
         Box(
             modifier = Modifier
                 .size(TILE)
+                // Свечение рисуется без обрезки и без blur: радиальный градиент дешёвый
+                .drawBehind {
+                    val a = focusAlpha
+                    if (a > 0f) {
+                        val r = size.minDimension * 0.62f
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(accent.copy(alpha = 0.35f * a), Color.Transparent),
+                                center = center,
+                                radius = r
+                            ),
+                            radius = r,
+                            center = center
+                        )
+                    }
+                }
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                 }
-                .shadow(
-                    elevation = if (focused) 40.dp else 0.dp,
-                    shape = shape,
-                    ambientColor = accent,
-                    spotColor = accent
-                )
                 .clip(shape)
                 .background(
                     Brush.verticalGradient(
-                        0f to lerp(accent, Color.White, 0.25f),
-                        1f to lerp(accent, Color.Black, 0.45f)
+                        0f to Color(0xFF2C2C2E),
+                        1f to Color(0xFF141416)
                     )
                 )
-                .then(if (focused) Modifier.border(4.dp, Color.White, shape) else Modifier)
+                .then(if (focused) Modifier.border(3.dp, Color.White, shape) else Modifier)
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-                .onFocusChanged { state ->
-                    focused = state.isFocused
-                    if (state.isFocused) {
+                .onFocusChanged { s ->
+                    focused = s.isFocused
+                    if (s.isFocused) {
                         onFocused()
                         scope.launch { bringIntoView.bringIntoView() }
                     }
@@ -134,32 +126,44 @@ fun AppTile(
             contentAlignment = Alignment.Center
         ) {
             val art = app.art
-            if (art != null) {
-                androidx.compose.foundation.Image(
+            val backdrop = app.backdrop
+            when {
+                art != null && app.isBanner && backdrop != null -> {
+                    Image(
+                        bitmap = backdrop,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(modifier = Modifier.fillMaxSize().background(Color(0x66000000)))
+                    Image(
+                        bitmap = art,
+                        contentDescription = app.label,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                art != null -> Image(
                     bitmap = art,
                     contentDescription = app.label,
-                    contentScale = if (app.isBanner) ContentScale.Crop else ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(if (app.isBanner) 0.dp else 40.dp)
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
                 )
-            } else {
-                Text(text = "★", fontSize = 96.sp, color = Color.White)
+                else -> Text(text = "★", fontSize = 96.sp, color = Color.White)
             }
 
-            // Блик сверху, как у стеклянной поверхности
+            // Лёгкий блик сверху, как у стеклянной поверхности
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            0f to Color(0x2EFFFFFF),
+                            0f to Color(0x1FFFFFFF),
                             0.5f to Color.Transparent
                         )
                     )
             )
 
-            // Метка избранного
             if (isFavorite) {
                 Text(
                     text = "★",
@@ -187,7 +191,7 @@ fun AppTile(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.graphicsLayer { alpha = labelAlpha }
+                modifier = Modifier.graphicsLayer { alpha = focusAlpha }
             )
         }
     }

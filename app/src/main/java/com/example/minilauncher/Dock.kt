@@ -5,15 +5,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,13 +37,11 @@ fun AppDock(
     val listState = rememberLazyListState()
     // Один FocusRequester на каждое приложение, чтобы можно было вернуть фокус
     val requesters = remember { HashMap<String, FocusRequester>() }
-    var focusedIndex by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(apps.size, restoreTick) {
         if (apps.isEmpty()) return@LaunchedEffect
         val target = apps.firstOrNull { it.packageName == focusedPkg } ?: apps.first()
         val idx = apps.indexOfFirst { it.packageName == target.packageName }
-        focusedIndex = idx
         listState.scrollToItem(idx)
         // Плитка появляется в композиции не сразу, поэтому пробуем несколько кадров
         repeat(5) {
@@ -74,17 +69,14 @@ fun AppDock(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                itemsIndexed(apps, key = { _, app -> app.packageName }) { index, app ->
+                items(apps, key = { it.packageName }) { app ->
                     val requester = requesters.getOrPut(app.packageName) { FocusRequester() }
                     AppTile(
                         app = app,
-                        index = index,
-                        focusedIndex = focusedIndex,
                         isFavorite = app.packageName in favorites,
                         reducedMotion = reducedMotion,
                         focusRequester = requester,
                         onFocused = {
-                            focusedIndex = index
                             onFocusedPkg(app.packageName)
                             onAccentChange(Color(app.accent))
                         },

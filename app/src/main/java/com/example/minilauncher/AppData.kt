@@ -15,5 +15,7 @@ data class AppData(
     val art: ImageBitmap?,
     val isBanner: Boolean,
     val accent: Int,
-    val launchIntent: Intent
+    val launchIntent: Intent,
+    /** Размытый фон для баннера (картинка 16×9, растянутая обратно). Для иконок null. */
+    val backdrop: ImageBitmap? = null
 )
