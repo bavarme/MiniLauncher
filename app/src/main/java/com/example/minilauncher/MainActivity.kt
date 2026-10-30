@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         // Нажали «Домой» на открытом лаунчере: закрываем оверлеи и будим заставку
         if (state.overlay != Overlay.NONE) state.close()
